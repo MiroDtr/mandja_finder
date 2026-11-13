@@ -1,45 +1,103 @@
-import { useEffect, useRef, useState } from "react";
-import { getSetting, setSetting } from "../db";
+import { useState, type FormEvent } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getPreferences, updatePreferences, type PrefKind, type Preferences } from "../db";
+
+const FIELDS: { kind: PrefKind; title: string; hint: string; placeholder: string; suggestions: string[] }[] = [
+  {
+    kind: "likes",
+    title: "Харесвам",
+    hint: "Ще бъдат предпочитани в офертите и рецептите.",
+    placeholder: "напр. пилешко",
+    suggestions: ["Пилешко", "Свинско", "Риба", "Сирене", "Паста", "Ориз", "Зеленчуци", "Люто"],
+  },
+  {
+    kind: "dislikes",
+    title: "Не харесвам",
+    hint: "Ще бъдат избягвани.",
+    placeholder: "напр. гъби",
+    suggestions: ["Гъби", "Риба", "Карфиол", "Маслини", "Лук", "Чесън", "Карантия"],
+  },
+  {
+    kind: "allergies",
+    title: "Алергии",
+    hint: "Никога няма да бъдат предлагани.",
+    placeholder: "напр. ядки",
+    suggestions: ["Ядки", "Фъстъци", "Глутен", "Лактоза", "Яйца", "Соя", "Морски дарове", "Риба", "Сусам"],
+  },
+];
+
+function PrefField({ field, prefs }: { field: (typeof FIELDS)[number]; prefs: Preferences }) {
+  const [value, setValue] = useState("");
+  const items = prefs[field.kind];
+  const has = (name: string) => items.some((i) => i.toLowerCase() === name.toLowerCase());
+
+  function add(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    void updatePreferences(field.kind, (list) =>
+      list.some((i) => i.toLowerCase() === clean.toLowerCase()) ? list : [...list, clean],
+    );
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    add(value);
+    setValue("");
+  }
+
+  const remove = (name: string) => updatePreferences(field.kind, (list) => list.filter((i) => i !== name));
+  const suggestions = field.suggestions.filter((s) => !has(s));
+
+  return (
+    <div className={`card pref pref-${field.kind}`}>
+      <h2>{field.title}</h2>
+      <p className="muted small">{field.hint}</p>
+      <form className="row" onSubmit={submit}>
+        <input
+          className="grow"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={field.placeholder}
+          aria-label={field.title}
+        />
+        <button className="primary" disabled={!value.trim()}>
+          Добави
+        </button>
+      </form>
+      {items.length > 0 && (
+        <div className="tags">
+          {items.map((item) => (
+            <span key={item} className="tag">
+              {item}
+              <button aria-label={`Премахни ${item}`} onClick={() => remove(item)}>
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {suggestions.length > 0 && (
+        <div className="suggestions">
+          <span className="muted small">Предложения:</span>
+          {suggestions.map((s) => (
+            <button key={s} className="suggestion" onClick={() => add(s)}>
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PreferencesPage() {
-  const [text, setText] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    getSetting("preferences", "").then((value) => {
-      setText(value);
-      setLoaded(true);
-    });
-  }, []);
-
-  function change(value: string) {
-    setText(value);
-    setSaved(false);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(async () => {
-      await setSetting("preferences", value);
-      setSaved(true);
-    }, 500);
-  }
+  const prefs = useLiveQuery(getPreferences, []);
 
   return (
     <>
       <h1>Предпочитания</h1>
-      <p className="muted">
-        Напиши какво обичаш, какво не обичаш и към какво имаш алергии. Асистентът го взима предвид при офертите и
-        рецептите.
-      </p>
-      <textarea
-        className="prefs"
-        rows={10}
-        value={text}
-        disabled={!loaded}
-        onChange={(e) => change(e.target.value)}
-        placeholder={"Например:\nАлергия към ядки.\nНе обичам риба и гъби.\nОбичам пилешко, сирене и люто."}
-      />
-      <p className="muted small">{saved ? "✓ Запазено" : "Запазва се автоматично на това устройство."}</p>
+      <p className="muted">Асистентът взима това предвид при офертите и рецептите. Пази се само на това устройство.</p>
+      {prefs && FIELDS.map((field) => <PrefField key={field.kind} field={field} prefs={prefs} />)}
     </>
   );
 }

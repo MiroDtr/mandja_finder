@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { callAI, errorText } from "../api";
-import { db, getSetting, setSetting } from "../db";
+import { db, getSetting, preferencesText, setSetting } from "../db";
 import type { TabId } from "../App";
 
 const MEALS = ["Закуска", "Обяд", "Вечеря", "Десерт"];
@@ -49,7 +49,7 @@ export function RecipesPage({ goTo }: { goTo: (tab: TabId) => void }) {
         items: chosen.map((i) => `${i.id} | ${i.name} | ${i.amount || "-"}`).join("\n"),
         meals: MEALS.filter((m) => meals.includes(m)),
         servings,
-        preferences: await getSetting("preferences", ""),
+        preferences: await preferencesText(),
         exclude: more ? recipes.map((r) => r.title) : [],
       });
       setRecipes(more ? [...recipes, ...result.recipes] : result.recipes);
@@ -71,7 +71,7 @@ export function RecipesPage({ goTo }: { goTo: (tab: TabId) => void }) {
       <>
         <h1>Рецепти</h1>
         <div className="empty">
-          <p>Списъкът с купени продукти е празен. Рецептите се предлагат според това, което си купил.</p>
+          <p>Списъкът с налични продукти е празен. Рецептите се предлагат според продуктите, които имаш.</p>
           <button className="primary" onClick={() => goTo("cart")}>
             Към количката
           </button>
@@ -152,14 +152,14 @@ export function RecipesPage({ goTo }: { goTo: (tab: TabId) => void }) {
             ))}
           </ol>
           {recipe.cooked ? (
-            <p className="notice">✓ Избрана. Използваните продукти са премахнати от „Купени“.</p>
+            <p className="notice">✓ Избрана. Използваните продукти са премахнати от „Налични продукти“.</p>
           ) : (
             <>
               <button className="primary" onClick={() => cook(index)}>
                 Ще сготвя това
               </button>
               <p className="muted small">
-                Ще премахне от „Купени“:{" "}
+                Ще премахне от „Налични продукти“:{" "}
                 {recipe.used_item_ids.map(nameOf).filter(Boolean).join(", ") || "нищо"}
               </p>
             </>

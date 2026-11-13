@@ -104,7 +104,7 @@ export function CartPage({ goTo }: { goTo: (tab: TabId) => void }) {
 
   async function finish() {
     if (!items?.length) return;
-    if (!confirm("Приключваш пазаруването? Продуктите ще се преместят в „Купени“.")) return;
+    if (!confirm("Приключваш пазаруването? Продуктите ще се преместят в „Налични продукти“.")) return;
     await db.transaction("rw", db.cart, db.bought, async () => {
       await db.bought.bulkAdd(
         items

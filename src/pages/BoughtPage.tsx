@@ -8,7 +8,7 @@ export function BoughtPage({ goTo }: { goTo: (tab: TabId) => void }) {
   return (
     <>
       <div className="row">
-        <h1 className="grow">Купени</h1>
+        <h1 className="grow">Налични продукти</h1>
         {items && items.length > 0 && (
           <button className="ghost" onClick={() => confirm("Да изчистя ли целия списък?") && db.bought.clear()}>
             Изчисти всичко

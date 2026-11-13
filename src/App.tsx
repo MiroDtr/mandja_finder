@@ -14,7 +14,7 @@ const TABS = [
   { id: "deals", icon: "🔎", label: "Оферти" },
   { id: "leaflets", icon: "📰", label: "Брошури" },
   { id: "cart", icon: "🛒", label: "Количка" },
-  { id: "bought", icon: "🧺", label: "Купени" },
+  { id: "bought", icon: "🧺", label: "Налични продукти" },
   { id: "recipes", icon: "🍳", label: "Рецепти" },
   { id: "history", icon: "🕘", label: "История" },
   { id: "prefs", icon: "❤️", label: "Предпочитания" },
@@ -64,6 +64,7 @@ function Login({ onDone }: { onDone: () => void }) {
 export function App() {
   const [authed, setAuthed] = useState(() => !!getPassword());
   const [tab, setTab] = useState<TabId>("deals");
+  const [menuOpen, setMenuOpen] = useState(false);
   const cartCount = useLiveQuery(() => db.cart.count(), []) ?? 0;
 
   useEffect(() => {
@@ -81,12 +82,31 @@ export function App() {
     </section>
   );
 
+  const go = (id: TabId) => {
+    setTab(id);
+    setMenuOpen(false);
+    window.scrollTo(0, 0);
+  };
+
   return (
     <div className="shell">
-      <nav className="nav">
+      <header className="topbar">
+        <div className="brand">🍲 Манджа Finder</div>
+        <button
+          className="burger"
+          aria-label={menuOpen ? "Затвори менюто" : "Отвори менюто"}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          {menuOpen ? "✕" : "☰"}
+          {!menuOpen && cartCount > 0 && <span className="badge dot">{cartCount}</span>}
+        </button>
+      </header>
+      {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} />}
+      <nav className={menuOpen ? "nav open" : "nav"}>
         <div className="brand">🍲 Манджа Finder</div>
         {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? "nav-item active" : "nav-item"} onClick={() => setTab(t.id)}>
+          <button key={t.id} className={tab === t.id ? "nav-item active" : "nav-item"} onClick={() => go(t.id)}>
             <span className="nav-icon">{t.icon}</span>
             <span className="nav-label">{t.label}</span>
             {t.id === "cart" && cartCount > 0 && <span className="badge">{cartCount}</span>}
@@ -94,11 +114,11 @@ export function App() {
         ))}
       </nav>
       <main className="main">
-        {page("deals", <DealsPage goTo={setTab} />)}
+        {page("deals", <DealsPage goTo={go} />)}
         {page("leaflets", <LeafletsPage />)}
-        {page("cart", <CartPage goTo={setTab} />)}
-        {page("bought", <BoughtPage goTo={setTab} />)}
-        {page("recipes", <RecipesPage goTo={setTab} />)}
+        {page("cart", <CartPage goTo={go} />)}
+        {page("bought", <BoughtPage goTo={go} />)}
+        {page("recipes", <RecipesPage goTo={go} />)}
         {page("history", <HistoryPage />)}
         {page("prefs", <PreferencesPage />)}
       </main>

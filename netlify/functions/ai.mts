@@ -95,7 +95,7 @@ function image(data: string): Anthropic.ImageBlockParam {
 function prefs(p: unknown): string {
   const text = typeof p === "string" ? p.trim() : "";
   return text
-    ? `The user's food preferences, dislikes and allergies (free text, respect it strictly — never suggest anything they are allergic to):\n"""${text}"""`
+    ? `The user's food preferences, dislikes and allergies — respect them strictly, never suggest anything they are allergic to:\n"""${text}"""`
     : "The user has not entered any food preferences.";
 }
 

@@ -93,6 +93,35 @@ export function setSetting(key: string, value: unknown) {
   return db.settings.put({ key, value });
 }
 
+export type PrefKind = "likes" | "dislikes" | "allergies";
+export type Preferences = Record<PrefKind, string[]>;
+
+export async function getPreferences(): Promise<Preferences> {
+  const saved = await getSetting<Partial<Preferences> | string>("preferences", {});
+  const p = typeof saved === "string" ? {} : saved; // older versions stored free text
+  return { likes: p.likes ?? [], dislikes: p.dislikes ?? [], allergies: p.allergies ?? [] };
+}
+
+/** Changes one list, starting from the latest saved state so quick taps don't overwrite each other. */
+export function updatePreferences(kind: PrefKind, change: (items: string[]) => string[]) {
+  return db.transaction("rw", db.settings, async () => {
+    const prefs = await getPreferences();
+    await setSetting("preferences", { ...prefs, [kind]: change(prefs[kind]) });
+  });
+}
+
+/** Preferences as plain text for the AI prompt; empty string when nothing is set. */
+export async function preferencesText(): Promise<string> {
+  const p = await getPreferences();
+  return [
+    p.allergies.length ? `Allergies (never suggest, also not as an ingredient): ${p.allergies.join(", ")}` : "",
+    p.dislikes.length ? `Dislikes (avoid): ${p.dislikes.join(", ")}` : "",
+    p.likes.length ? `Likes (prefer): ${p.likes.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function today(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

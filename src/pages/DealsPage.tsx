@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { callAI, errorText } from "../api";
-import { activeProducts, db, getSetting, type ChatTurn, type Product } from "../db";
+import { activeProducts, db, preferencesText, type ChatTurn, type Product } from "../db";
 import { ProductGrid } from "../ProductCard";
 import type { TabId } from "../App";
 
@@ -43,7 +43,7 @@ export function DealsPage({ goTo }: { goTo: (tab: TabId) => void }) {
         question: q,
         history: turns.map((t) => ({ q: t.q, a: t.a })),
         products: products.map(productLine).join("\n"),
-        preferences: await getSetting("preferences", ""),
+        preferences: await preferencesText(),
       });
       const byId = new Map(products.map((p) => [p.id, p]));
       const picked = result.product_ids
