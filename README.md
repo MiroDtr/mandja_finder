@@ -1,16 +1,40 @@
-# Манджа Finder 2.0
+# Pazarko
 
 Deal finder for Bulgarian supermarkets (Kaufland, Lidl, Billa, Fantastico).
 
-- **Оферти** – ask about deals in the uploaded leaflets (Claude Haiku).
-- **Брошури** – upload a PDF leaflet; each page is read by Claude Sonnet.
-- **Количка** – photograph shelf price labels to build a cart with a running total.
-- **Купени / Рецепти** – finished shops feed recipe suggestions.
-- **История** – past deal conversations, read-only.
-- **Предпочитания** – likes, dislikes and allergies, used in every answer.
+- **Оферти** – search this week's offers: free text search, category and store filters,
+  sort by price, discount or price per kg. Allergies are hidden, likes get a ⭐.
+  "Попитай AI" answers free-form questions (Claude Haiku, API).
+- **Брошури** – the leaflets currently loaded. A PDF can also be uploaded by hand (Claude Haiku, API).
+- **Количка** – photograph shelf price labels (Claude Haiku, API) or add items by hand.
+- **Налични продукти / Рецепти** – finished shops feed recipe suggestions (Claude Haiku, API).
+- **История** – past "Попитай AI" conversations, read-only.
+- **Предпочитания** – likes, dislikes and allergies.
 
-All data is stored in the browser (IndexedDB), per device. The only server code is
-`netlify/functions/ai.mts`, which checks the shared password and calls the Claude API.
+## Where the offers come from
+
+`public/offers.json`, rebuilt weekly **in Claude Code** with the `update-offers` skill
+(`.claude/skills/update-offers/SKILL.md`): just ask Claude Code to "update offers".
+It downloads the Kaufland, Lidl and Billa leaflets, reads them with subagents (your
+Claude subscription, no API cost), writes `public/offers.json` and pushes it; Netlify publishes it.
+
+For a Fantastico (or any other) leaflet, put the PDF in `offers-inbox/` and mention it.
+
+Script steps, if you want to run them yourself:
+
+```bash
+node scripts/offers.mjs discover
+node scripts/offers.mjs prepare <key...>
+node scripts/offers.mjs status
+node scripts/offers.mjs build
+```
+
+## Costs
+
+Everything in the app that uses AI runs on Claude Haiku (the cheapest model) with thinking off:
+about $0.0003 per label photo, $0.002 per recipe request, $0.005 per "Попитай AI" question.
+These need credit in the Anthropic API account; without it they show a "no credit" message and
+the rest of the app (offers, search, manual cart, lists) keeps working.
 
 ## Run locally
 
@@ -18,17 +42,9 @@ All data is stored in the browser (IndexedDB), per device. The only server code 
 2. Fill in `.env` (see `.env.example`): `ANTHROPIC_API_KEY` and `APP_PASSWORD`.
 3. `npm run dev` and open http://localhost:5173
 
-## Deploy to Netlify
+## Deploy
 
-1. Push this folder to a GitHub repository.
-2. In Netlify: **Add new site → Import an existing project** and pick the repository.
-   The build settings come from `netlify.toml`.
-3. Under **Site configuration → Environment variables** add:
-   - `ANTHROPIC_API_KEY` – your Claude API key
-   - `APP_PASSWORD` – the password you and your partner type on first open
-4. Deploy. Changing an environment variable needs a new deploy to take effect.
+Netlify builds from GitHub using `netlify.toml`. Set `ANTHROPIC_API_KEY` and `APP_PASSWORD`
+under Site configuration → Environment variables.
 
-## Models
-
-Set at the top of `netlify/functions/ai.mts`: Sonnet reads leaflet pages and writes
-recipes, Haiku reads price labels and answers deal questions.
+User data (cart, lists, preferences, history) is stored in each browser only.

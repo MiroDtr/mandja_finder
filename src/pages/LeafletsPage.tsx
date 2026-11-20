@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { callAI, errorText, AuthError } from "../api";
 import { db, deleteLeaflet, formatDate, STORES, today, type Product, type Store } from "../db";
 import { openPdf } from "../images";
+import { useOffers } from "../offers";
 
 interface PageResult {
   valid_from: string | null;
@@ -32,17 +33,14 @@ interface Draft {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PARALLEL_PAGES = 3;
 
-export function LeafletsPage() {
-  const leaflets = useLiveQuery(() => db.leaflets.orderBy("validTo").reverse().toArray(), []);
-  const [store, setStore] = useState<Store>("Kaufland");
+/** Manual upload, read by Claude Haiku through the API — a fallback for leaflets the weekly update misses. */
+function ManualUpload() {
+  const [store, setStore] = useState<Store>("Fantastico");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-
   const now = today();
-  const active = leaflets?.filter((l) => l.validTo >= now) ?? [];
-  const expired = leaflets?.filter((l) => l.validTo < now) ?? [];
 
   async function process(file: File) {
     setError("");
@@ -57,7 +55,7 @@ export function LeafletsPage() {
     const total = pdf.pageCount;
     setProgress({ done: 0, total });
 
-    const results: (PageResult | null)[] = new Array(total).fill(null);
+    const results: (PageResult | null | "skipped")[] = new Array(total).fill(null);
     let nextPage = 1;
     let done = 0;
     let fatal: unknown = null;
@@ -66,13 +64,16 @@ export function LeafletsPage() {
       while (nextPage <= total && !fatal) {
         const pageNumber = nextPage++;
         try {
-          const image = await pdf.renderPage(pageNumber);
-          const payload = { image, store, today: now };
-          try {
-            results[pageNumber - 1] = await callAI<PageResult>("leaflet-page", payload);
-          } catch (err) {
-            if (err instanceof AuthError) throw err;
-            results[pageNumber - 1] = await callAI<PageResult>("leaflet-page", payload); // one retry
+          const page = await pdf.readPage(pageNumber);
+          if (!page) results[pageNumber - 1] = "skipped";
+          else {
+            const payload = { ...page, store, today: now };
+            try {
+              results[pageNumber - 1] = await callAI<PageResult>("leaflet-page", payload);
+            } catch (err) {
+              if (err instanceof AuthError) throw err;
+              results[pageNumber - 1] = await callAI<PageResult>("leaflet-page", payload); // one retry
+            }
           }
         } catch (err) {
           if (err instanceof AuthError) fatal = err;
@@ -93,6 +94,7 @@ export function LeafletsPage() {
     const products: Draft["products"] = [];
     const failedPages: number[] = [];
     results.forEach((result, i) => {
+      if (result === "skipped") return;
       if (!result) return void failedPages.push(i + 1);
       for (const p of result.products) {
         if (!p.name || !(p.price > 0)) continue;
@@ -116,7 +118,9 @@ export function LeafletsPage() {
       return;
     }
     const pick = (key: "valid_from" | "valid_to") =>
-      results.map((r) => r?.[key]).find((d): d is string => !!d && ISO_DATE.test(d)) ?? "";
+      results
+        .map((r) => (r && r !== "skipped" ? r[key] : null))
+        .find((d): d is string => !!d && ISO_DATE.test(d)) ?? "";
     const next: Draft = {
       store,
       fileName: file.name,
@@ -147,83 +151,115 @@ export function LeafletsPage() {
   const busy = !!progress;
 
   return (
+    <details className="card manual">
+      <summary>Качи PDF брошура ръчно</summary>
+      <p className="muted small">
+        За брошури, които седмичното обновяване не покрива (напр. Fantastico). Разчита се от Claude Haiku през API —
+        около 0,10 € за брошура и изисква кредит в API акаунта. Офертите остават само на това устройство.
+      </p>
+      <div className="row wrap">
+        <label>
+          Магазин{" "}
+          <select value={store} onChange={(e) => setStore(e.target.value as Store)} disabled={busy}>
+            {STORES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+        <button className="primary" disabled={busy} onClick={() => fileInput.current?.click()}>
+          Избери PDF
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/pdf"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void process(file);
+          }}
+        />
+      </div>
+      {progress && (
+        <div className="progress-wrap">
+          <progress value={progress.done} max={progress.total} />
+          <span className="muted small">
+            Разчитам страница {Math.min(progress.done + 1, progress.total)} от {progress.total}… Не затваряй страницата.
+          </span>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+      {draft && (
+        <div className="draft">
+          <p>
+            Открих <strong>{draft.products.length}</strong> продукта в „{draft.fileName}“.
+            {draft.failedPages.length > 0 && (
+              <span className="error"> Не успях да разчета страници: {draft.failedPages.join(", ")}.</span>
+            )}
+          </p>
+          <p className="muted small">Провери периода на валидност на офертите:</p>
+          <div className="row wrap">
+            <label>
+              От{" "}
+              <input type="date" value={draft.validFrom} onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })} />
+            </label>
+            <label>
+              До{" "}
+              <input type="date" value={draft.validTo} onChange={(e) => setDraft({ ...draft, validTo: e.target.value })} />
+            </label>
+            <button className="primary" disabled={!draft.validFrom || !draft.validTo} onClick={() => save(draft)}>
+              Запази
+            </button>
+            <button className="ghost" onClick={() => setDraft(null)}>
+              Откажи
+            </button>
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
+export function LeafletsPage() {
+  const { shared } = useOffers();
+  const local = useLiveQuery(() => db.leaflets.orderBy("validTo").reverse().toArray(), []);
+  const now = today();
+  const localActive = local?.filter((l) => l.validTo >= now) ?? [];
+  const expired = local?.filter((l) => l.validTo < now) ?? [];
+
+  return (
     <>
       <h1>Брошури</h1>
-      <div className="card">
-        <div className="row wrap">
-          <label>
-            Магазин{" "}
-            <select value={store} onChange={(e) => setStore(e.target.value as Store)} disabled={busy}>
-              {STORES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <button className="primary" disabled={busy} onClick={() => fileInput.current?.click()}>
-            Качи PDF брошура
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/pdf"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) void process(file);
-            }}
-          />
-        </div>
-        {progress && (
-          <div className="progress-wrap">
-            <progress value={progress.done} max={progress.total} />
-            <span className="muted small">
-              Разчитам страница {Math.min(progress.done + 1, progress.total)} от {progress.total}… Не затваряй
-              страницата.
-            </span>
-          </div>
-        )}
-        {error && <p className="error">{error}</p>}
-        {draft && (
-          <div className="draft">
-            <p>
-              Открих <strong>{draft.products.length}</strong> продукта в „{draft.fileName}“.
-              {draft.failedPages.length > 0 && (
-                <span className="error"> Не успях да разчета страници: {draft.failedPages.join(", ")}.</span>
-              )}
-            </p>
-            <p className="muted small">Провери периода на валидност на офертите:</p>
-            <div className="row wrap">
-              <label>
-                От{" "}
-                <input
-                  type="date"
-                  value={draft.validFrom}
-                  onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })}
-                />
-              </label>
-              <label>
-                До{" "}
-                <input
-                  type="date"
-                  value={draft.validTo}
-                  onChange={(e) => setDraft({ ...draft, validTo: e.target.value })}
-                />
-              </label>
-              <button className="primary" disabled={!draft.validFrom || !draft.validTo} onClick={() => save(draft)}>
-                Запази
-              </button>
-              <button className="ghost" onClick={() => setDraft(null)}>
-                Откажи
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <p className="muted">
+        Брошурите на Kaufland, Lidl и Billa се обновяват всяка седмица и са общи за всички.
+        {shared?.updatedAt &&
+          ` Последно обновяване: ${new Date(shared.updatedAt).toLocaleDateString("bg-BG", { day: "numeric", month: "long" })}.`}
+      </p>
+      {shared?.error && <p className="error">{shared.error}</p>}
+      {shared && shared.leaflets.length === 0 && localActive.length === 0 && (
+        <p className="muted">Няма активни брошури.</p>
+      )}
 
-      <h2>Активни</h2>
-      {leaflets && active.length === 0 && <p className="muted">Няма активни брошури.</p>}
-      {active.map((l) => (
+      {shared?.leaflets.map((l) => (
+        <div key={l.id} className="card row">
+          <div className="grow">
+            <span className={`store store-${l.store.toLowerCase()}`}>{l.store}</span>
+            <div>
+              {formatDate(l.validFrom)} – {formatDate(l.validTo)}
+              {l.validFrom > now && <span className="muted"> (предстояща)</span>}
+            </div>
+            <div className="muted small">{l.productCount} продукта</div>
+          </div>
+          {l.sourceUrl && (
+            <a className="button ghost" href={l.sourceUrl} target="_blank" rel="noreferrer">
+              Разгледай
+            </a>
+          )}
+        </div>
+      ))}
+
+      {localActive.map((l) => (
         <div key={l.id} className="card row">
           <div className="grow">
             <span className={`store store-${l.store.toLowerCase()}`}>{l.store}</span>
@@ -232,7 +268,7 @@ export function LeafletsPage() {
               {l.validFrom > now && <span className="muted"> (предстояща)</span>}
             </div>
             <div className="muted small">
-              {l.productCount} продукта · {l.fileName}
+              {l.productCount} продукта · качена на това устройство · {l.fileName}
             </div>
           </div>
           <button
@@ -253,6 +289,8 @@ export function LeafletsPage() {
           </button>
         </p>
       )}
+
+      <ManualUpload />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { callAI, errorText } from "../api";
 import { cartLineTotal, db, euro, type CartItem } from "../db";
@@ -44,7 +44,73 @@ function NumberField(props: {
   );
 }
 
+/** Add a product by hand — works without the AI (and without API credit). */
+function ManualAdd({ onDone }: { onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [weighed, setWeighed] = useState(false);
+  const [amount, setAmount] = useState("1");
+  const n = (s: string) => parseFloat(s.replace(",", "."));
+  const valid = name.trim() && n(price) > 0 && n(amount) > 0;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    await db.cart.add({
+      name: name.trim(),
+      size: null,
+      price: weighed ? 0 : n(price),
+      qty: weighed ? 1 : Math.max(1, Math.round(n(amount))),
+      weighed,
+      pricePerKg: weighed ? n(price) : null,
+      weightKg: weighed ? n(amount) : null,
+      unclear: false,
+      thumb: "",
+      createdAt: Date.now(),
+    });
+    onDone();
+  }
+
+  return (
+    <form className="card manual-add" onSubmit={submit}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Продукт" aria-label="Продукт" autoFocus />
+      <div className="row wrap">
+        <label className="check">
+          <input type="checkbox" checked={weighed} onChange={(e) => setWeighed(e.target.checked)} />
+          на тегло
+        </label>
+        <input
+          className="num-input"
+          inputMode="decimal"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder={weighed ? "€/кг" : "цена €"}
+          aria-label={weighed ? "Цена за кг" : "Цена"}
+        />
+        <input
+          className="num-input"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder={weighed ? "кг" : "бр."}
+          aria-label={weighed ? "Тегло в кг" : "Брой"}
+        />
+        <span className="muted">{weighed ? "кг" : "бр."}</span>
+      </div>
+      <div className="row">
+        <button className="primary" disabled={!valid}>
+          Добави
+        </button>
+        <button type="button" className="ghost" onClick={onDone}>
+          Откажи
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function CartPage({ goTo }: { goTo: (tab: TabId) => void }) {
+  const [adding, setAdding] = useState(false);
   const items = useLiveQuery(() => db.cart.orderBy("id").reverse().toArray(), []);
   const [scanning, setScanning] = useState(0);
   const [notice, setNotice] = useState("");
@@ -139,6 +205,9 @@ export function CartPage({ goTo }: { goTo: (tab: TabId) => void }) {
         <button className="ghost" disabled={scanning > 0} onClick={() => upload.current?.click()}>
           Качи снимки
         </button>
+        <button className="ghost" disabled={adding} onClick={() => setAdding(true)}>
+          + Добави ръчно
+        </button>
         <input
           ref={camera}
           type="file"
@@ -165,6 +234,7 @@ export function CartPage({ goTo }: { goTo: (tab: TabId) => void }) {
         {notice && scanning === 0 && <span className="notice">{notice}</span>}
       </div>
       {error && <p className="error">{error}</p>}
+      {adding && <ManualAdd onDone={() => setAdding(false)} />}
 
       {items && items.length === 0 && scanning === 0 && (
         <p className="muted">Количката е празна. Снимай етикета с цената на продукта, за да го добавиш.</p>

@@ -3,6 +3,22 @@ import Dexie, { type EntityTable } from "dexie";
 export const STORES = ["Kaufland", "Lidl", "Billa", "Fantastico"] as const;
 export type Store = (typeof STORES)[number];
 
+export const CATEGORIES = [
+  "Месо и колбаси",
+  "Риба",
+  "Млечни продукти",
+  "Плодове и зеленчуци",
+  "Хляб и тестени",
+  "Напитки",
+  "Алкохол",
+  "Сладко и снаксове",
+  "Замразени",
+  "Готови храни",
+  "Пакетирани и консерви",
+  "Нехранителни",
+  "Друго",
+] as const;
+
 export interface Leaflet {
   id: number;
   store: Store;

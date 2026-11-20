@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const config = { path: "/api/ai" };
 
-const SONNET = "claude-sonnet-5-5";
+// Every task runs on Haiku, the cheapest model. Weekly leaflets are read in Claude Code instead (see .claude/skills/update-offers).
 const HAIKU = "claude-haiku-5-5";
 
 const CATEGORIES = [
@@ -17,6 +17,7 @@ const CATEGORIES = [
   "Алкохол",
   "Сладко и снаксове",
   "Замразени",
+  "Готови храни",
   "Пакетирани и консерви",
   "Нехранителни",
   "Друго",
@@ -103,15 +104,27 @@ function build(body: any): Built | null {
   switch (body.task) {
     case "leaflet-page":
       return {
-        model: SONNET,
-        maxTokens: 16000,
+        model: HAIKU,
+        maxTokens: 8000,
         schema: LeafletPage,
         system: `You read one page of a Bulgarian supermarket promotional leaflet (${body.store}) and extract every product offer on it.
 ${PRICE_RULES}
 Extract every product that has a price. Skip decorative text, recipes, loyalty ads and legal notes.
 If the page prints the validity period of the offers, return it as dates; today is ${body.today}, use it to infer the year. Otherwise return null for the dates.
-If the page has no product offers, return an empty products list.`,
-        content: [image(body.image), { type: "text", text: "Extract all offers from this leaflet page." }],
+If the page has no product offers, return an empty products list.
+You may also get the page's text layer: one line per row, each piece tagged with its horizontal position in % ([x24]). Use it for exact spelling and numbers, and the image to see which name belongs to which price.`,
+        content: [
+          image(body.image),
+          {
+            type: "text",
+            text: body.text
+              ? `Text layer of this page:
+${String(body.text).slice(0, 12000)}
+
+Extract all offers from this leaflet page.`
+              : "Extract all offers from this leaflet page.",
+          },
+        ],
       };
     case "label":
       return {
@@ -150,7 +163,7 @@ Leave out products the user is allergic to or dislikes, and mention it briefly i
     }
     case "recipes":
       return {
-        model: SONNET,
+        model: HAIKU,
         maxTokens: 8000,
         schema: Recipes,
         system: `You suggest home recipes to a shopper in Bulgaria based on the groceries they just bought. Write everything in Bulgarian.
@@ -211,6 +224,8 @@ export default async (req: Request): Promise<Response> => {
     model: built.model,
     max_tokens: built.maxTokens,
     system: built.system,
+    // No thinking: these are short extraction/formatting tasks, and thinking tokens are billed.
+    thinking: { type: "disabled" },
     output_config: { effort: "low", format: zodOutputFormat(built.schema) },
     messages: [{ role: "user", content: built.content }],
   });
@@ -223,6 +238,9 @@ export default async (req: Request): Promise<Response> => {
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) return json(500, { error: "Невалиден ANTHROPIC_API_KEY." });
     if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Твърде много заявки. Изчакай малко и опитай пак." });
+    if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) {
+      return json(402, { error: "Няма кредит в Claude API акаунта. Тази функция ще работи, след като се зареди." });
+    }
     if (error instanceof Anthropic.APIError) return json(502, { error: `Грешка от Claude API (${error.status}): ${error.message}` });
     return json(502, { error: "Няма връзка с Claude API." });
   }

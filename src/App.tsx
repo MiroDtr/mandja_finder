@@ -42,8 +42,8 @@ function Login({ onDone }: { onDone: () => void }) {
 
   return (
     <form className="login" onSubmit={submit}>
-      <div className="login-logo">🍲</div>
-      <h1>Манджа Finder</h1>
+      <div className="login-logo">🛒</div>
+      <h1>Pazarko</h1>
       <p className="muted">Въведи паролата, за да продължиш.</p>
       <input
         type="password"
@@ -91,7 +91,7 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">🍲 Манджа Finder</div>
+        <div className="brand">🛒 Pazarko</div>
         <button
           className="burger"
           aria-label={menuOpen ? "Затвори менюто" : "Отвори менюто"}
@@ -104,7 +104,7 @@ export function App() {
       </header>
       {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} />}
       <nav className={menuOpen ? "nav open" : "nav"}>
-        <div className="brand">🍲 Манджа Finder</div>
+        <div className="brand">🛒 Pazarko</div>
         {TABS.map((t) => (
           <button key={t.id} className={tab === t.id ? "nav-item active" : "nav-item"} onClick={() => go(t.id)}>
             <span className="nav-icon">{t.icon}</span>
